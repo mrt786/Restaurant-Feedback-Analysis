@@ -1,13 +1,24 @@
 import json
+import pandas as pd
+import matplotlib.pyplot as plt
 import streamlit as st
-from itertools import zip_longest  # to iterate in the uneven length of dicts
+from datetime import datetime, timedelta
+from itertools import zip_longest  # to iterate in the uneven length of dictsfrom
+from dataScrapping import*
+from sentimentAnalysis import*
 
 st.title("RESTAURANT FEEDBACK ANALYSIS")
 # Function to load data from a JSON file
 def loadDataFromJson(restaurantName):
-    with open(f'{restaurantName}.json', 'r') as file:
-        loadData = json.load(file)
-    return loadData
+    try:
+        with open(f'{restaurantName}.json', 'r') as file:
+            loadData = json.load(file)
+            return loadData,restaurantName
+    except Exception as e:
+        st.warning(f"Error in loading file is: {e}, Loading data from the FANG.json")
+        with open('FANG.json', 'r') as file:
+            loadData = json.load(file)
+            return loadData,"FANG"
 
 def editColorOfSentiment(senitment):
     style = ""
@@ -24,15 +35,38 @@ def editColorOfSentiment(senitment):
         imageTag = '<img src="neutral.png" width="50" height="50" alt="Neutral sentiment" />'
     return style, imageTag
 
+def performSentimentAnalysis():
+    st.html(f"<h3 style= 'text-align: center'> Perform Sentiment Analysis </h3>")
+    resturantName = st.text_input("Enter name of the Restaurant")
+    reviewsStore,resturantName = loadDataFromJson(resturantName)
+    i = 0
+    temp = {}
+    for reviewDict in reviewsStore:
+        try:
+            response = returnLLMResponse(reviewsStore[reviewDict]['Review'])
+            # convert into a dict format from string i.e first it is a dict present in string '{}'
+            response =  json.loads(response)
+            temp[f"Response{i}"] = response
+        except Exception as e:
+                print(f"Error: {e}")
+                temp2 = {}
+                temp2["food_quality"] = ""
+                temp2["service_quality"] = ""
+                temp2["overall_sentiment"] = ""
+                temp[f"Response{i}"] = temp2
+        i += 1
+                        
+    with open(f"{resturantName}Sentiment.json",'w') as file:
+            json.dump(temp,file,indent = 5)
+
 # Define functions for each page
 def reviews_page(restaurantName="FANG"):
     reviews_per_page = 10
 
     # Load data once and store in session state
-    st.subheader(f"Restaurant Name: {restaurantName}")
-    st.html(f"<h3> Original Reviews Page </h3>")
+    st.html(f"<h3 style= 'text-align: center'> Original Reviews Page </h3>")
     if "originalReviews" not in st.session_state:
-        st.session_state.originalReviews = loadDataFromJson(restaurantName)
+        st.session_state.originalReviews,restaurantName = loadDataFromJson(restaurantName)
     originalReviews = st.session_state.originalReviews
 
     total_reviews = len(originalReviews)
@@ -72,11 +106,10 @@ def reviews_page(restaurantName="FANG"):
 def food_page(restaurantName = "FANG"):
     reviews_per_page = 10
     # Load data once and store in session state
-    st.subheader(f"Restaurant Name: {restaurantName}")
-    st.html(f"<h3> Analysis of Reviews</h3>")
+    st.html(f"<h3 style= 'text-align: center'> Analysis of Food Reviews</h3>")
     if "foodReviews" not in st.session_state:
-        st.session_state.originalReviews = loadDataFromJson(restaurantName)
-        st.session_state.foodReviews = loadDataFromJson(f'{restaurantName}Sentiment')
+        st.session_state.originalReviews,restaurantName = loadDataFromJson(restaurantName)
+        st.session_state.foodReviews,temp = loadDataFromJson(f'{restaurantName}Sentiment')
 
     originalReviews = st.session_state.originalReviews
     foodReviews = st.session_state.foodReviews
@@ -118,11 +151,10 @@ def food_page(restaurantName = "FANG"):
 def service_page(restaurantName = "FANG"):
     reviews_per_page = 10
     # Load data once and store in session state
-    st.subheader(f"Restaurant Name: {restaurantName}")
-    st.html(f"<h3> Analysis of Service</h3>")
+    st.html(f"<h3 style= 'text-align: center'> Analysis of Service Reviews</h3>")
     if "foodReviews" not in st.session_state:
-        st.session_state.originalReviews = loadDataFromJson(restaurantName)
-        st.session_state.foodReviews = loadDataFromJson(f'{restaurantName}Sentiment')
+        st.session_state.originalReviews,restaurantName = loadDataFromJson(restaurantName)
+        st.session_state.foodReviews,temp = loadDataFromJson(f'{restaurantName}Sentiment')
 
     originalReviews = st.session_state.originalReviews
     foodReviews = st.session_state.foodReviews
@@ -167,11 +199,10 @@ def service_page(restaurantName = "FANG"):
 def restaurant_sentiment_page(restaurantName = "FANG"):
     reviews_per_page = 10
     # Load data once and store in session state
-    st.subheader(f"Restaurant Name: {restaurantName}")
-    st.html(f"<h3> Analysis of Reviews</h3>")
+    st.html(f"<h3 style= 'text-align: center'> Analysis of Reviews</h3>")
     if "analyzedReviews" not in st.session_state:
-        st.session_state.originalReviews = loadDataFromJson(restaurantName)
-        st.session_state.analyzedReviews = loadDataFromJson(f'{restaurantName}Sentiment')
+        st.session_state.originalReviews,restaurantName = loadDataFromJson(restaurantName)
+        st.session_state.analyzedReviews,temp = loadDataFromJson(f'{restaurantName}Sentiment')
 
     originalReviews = st.session_state.originalReviews
     analyzedReviews = st.session_state.analyzedReviews
@@ -232,14 +263,127 @@ def restaurant_sentiment_page(restaurantName = "FANG"):
     else:
         st.write("No analyzed Reviews found for this restaurant.")
 
-# Main app logic
+def formatatData(dataFrame):
+    formatted_data = []
+    for index, (key, review) in enumerate(dataFrame.items(), start=1):
+        formatted_record = {
+            "Record": index,  # Sequential numbering
+            "Date": review.get("Date", ""),
+            "Review": review.get("Review", ""),
+            "Overall": review.get("Overall", ""),
+            "Food": review.get("Food", ""),
+            "Service": review.get("Service", ""),
+            "Ambience": review.get("Ambience", ""),
+        }
+        formatted_data.append(formatted_record)
+    return formatted_data
+
+
+def convert_date(date_str):
+    try:
+        # Check if the date is already in correct format
+        parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
+        return parsed_date.strftime("%B %d, %Y")
+    except ValueError:
+        # Handle relative dates
+        today = datetime.today()
+        if date_str == "today":
+            return today.strftime("%B %d, %Y")
+        elif "ago" in date_str:
+            days_ago = int(date_str.split(" ")[0])
+            target_date = today - timedelta(days=days_ago)
+            return target_date.strftime("%B %d, %Y")
+        else:
+            # If the format is unrecognized, return as is
+            return date_str
+
+# Apply conversion only to rows with incorrect formats
+
+def compiteterAnalysis():
+    st.html("<h3 style= 'text-align: center'>Compiteter Analysis VIA Ratings</h3>")
+    compiteterName = ""
+    yourRestName = ""
+    with st.form("Compiteter Scrapping Form", clear_on_submit=True):
+        compiteterUrl = st.text_input("Paste Url of Compiteter", key="compiteter_url_input")
+        yourResturantUrl = st.text_input("Your Restaurant Url", key="your_restaurant_url_input")
+        submit = st.form_submit_button("Scrap")
+        if submit and compiteterUrl and yourResturantUrl:
+            compiteterName = scrapData(compiteterUrl)
+            yourRestName = scrapData(yourResturantUrl)
+        elif submit:
+            st.warning("Please enter valid URL's!!!")
+            return
+        
+    # compiteterName = "AKIKOS"
+    # yourRestName = "FANG"
+    if compiteterName != "" and yourRestName != "" and yourRestName != compiteterName:
+        compDf,_ = loadDataFromJson(f'{compiteterName}')
+        yourDf,_ = loadDataFromJson(f'{yourRestName}')
+        compDf = pd.DataFrame(data = formatatData(compDf)) 
+        compDf.set_index("Record", inplace=True)
+        yourDf  = pd.DataFrame(data =formatatData(yourDf))
+        yourDf.set_index("Record", inplace=True)
+        yourDf["Date"] = yourDf["Date"].apply(
+            lambda x: convert_date(x) if "ago" in x or x == "today" else x
+        )
+        compDf["Date"] = compDf["Date"].apply(
+            lambda x: convert_date(x) if "ago" in x or x == "today" else x
+        )
+
+
+        temp = pd.to_datetime(yourDf['Date'], format="%B %d, %Y")
+        # extract the day , month , year
+        yourDf['Day'] = temp.dt.day
+        yourDf["Month"] = temp.dt.month_name()
+        yourDf["Year"] = temp.dt.year
+        
+
+        temp = pd.to_datetime(compDf['Date'], format="%B %d, %Y")
+        compDf['Day'] = temp.dt.day
+        compDf["Month"] = temp.dt.month_name()
+        compDf["Year"] = temp.dt.year        
+
+        colsToConvert = ['Food', 'Service', 'Overall', 'Ambience', 'Year']
+        # Use pd.to_numeric with errors='coerce' to handle invalid data gracefully
+        for column in colsToConvert:
+            compDf[column] = pd.to_numeric(compDf[column], errors='coerce')
+            yourDf[column] = pd.to_numeric(yourDf[column], errors='coerce')
+
+        st.write(f"Some records of {compiteterName}",compDf.sample(6))
+        st.write(f"Some records of {yourRestName}",yourDf.sample(6))
+
+        def generateTimeGraph(typeOfRating):
+            yourRatings = yourDf.groupby("Year")[typeOfRating].mean()
+            compiteterRating = compDf.groupby("Year")[typeOfRating].mean()
+            fig = plt.figure(figsize=(10, 6))
+            yourRatings.plot(kind='line', color='skyblue',marker = 'o')
+            compiteterRating.plot(kind='line', color='red',marker = 'o')
+            plt.title(f'{typeOfRating} Ratings by Year')
+            plt.xlabel('Year')
+            plt.ylabel('Average Rating')
+            plt.grid(True,alpha = 1)
+            plt.legend(title="Categories", fontsize=12)
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig)
+
+        generateTimeGraph("Overall")
+        generateTimeGraph("Food")
+        generateTimeGraph("Service")
+        generateTimeGraph("Ambience")
+
+
+    # elif submit:
+        # st.warning("Please enter valid URL's!!!")
+
+    
 def main():
-    st.sidebar.title("REVIEW SIDEBAR")  # Add a sidebar for better UI
+    st.sidebar.html("<h1 style = 'text-align: center'>Restaurant Name: FANG</h1>")
     st.sidebar.write("Choose a page to navigate:")
     # Dropdown for additional options
     option = st.sidebar.selectbox(
-        "More Options",
-        ("Select a page", "Food Reviews", "Service Reviews", "Restaurant Sentiment","Scrapped Reviews")
+        "Options",
+        ("Select a page", "Food Reviews", "Service Reviews", "Restaurant Sentiment","Scrapped Reviews","Compiteter Analysis","Perform Sentiment Analysis")
     )
 
     if option == "Food Reviews":
@@ -248,9 +392,13 @@ def main():
         service_page()
     elif option == "Restaurant Sentiment":
         restaurant_sentiment_page()
+    elif option == "Compiteter Analysis":
+        compiteterAnalysis()
+    elif option == "Perform Sentiment Analysis":
+        performSentimentAnalysis()
     else:
-        reviews_page()
-
+        # reviews_page()
+        compiteterAnalysis()
 
 # Run the app
 if __name__ == "__main__":
