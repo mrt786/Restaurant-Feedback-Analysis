@@ -313,6 +313,8 @@ def compiteterAnalysis():
         elif submit:
             st.warning("Please enter valid URL's!!!")
             return
+        st.write(f"Compiteter Name: {compiteterName}")
+        st.write(f"Your Restaurant: {yourRestName}")
         
     # compiteterName = "AKIKOS"
     # yourRestName = "FANG"
@@ -351,8 +353,9 @@ def compiteterAnalysis():
 
         st.write(f"Some records of {compiteterName}",compDf.sample(6))
         st.write(f"Some records of {yourRestName}",yourDf.sample(6))
-
         def generateTimeGraph(typeOfRating):
+            st.write(f"{yourRestName}: SkyBlue")
+            st.write(f"{compiteterName}: Red")
             yourRatings = yourDf.groupby("Year")[typeOfRating].mean()
             compiteterRating = compDf.groupby("Year")[typeOfRating].mean()
             fig = plt.figure(figsize=(10, 6))
@@ -371,10 +374,6 @@ def compiteterAnalysis():
         generateTimeGraph("Food")
         generateTimeGraph("Service")
         generateTimeGraph("Ambience")
-
-
-    # elif submit:
-        # st.warning("Please enter valid URL's!!!")
 
     
 def main():
@@ -397,8 +396,7 @@ def main():
     elif option == "Perform Sentiment Analysis":
         performSentimentAnalysis()
     else:
-        # reviews_page()
-        compiteterAnalysis()
+        reviews_page()
 
 # Run the app
 if __name__ == "__main__":
